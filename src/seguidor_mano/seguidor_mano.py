@@ -1,6 +1,9 @@
+import threading
+import cv2
 import mediapipe as mp
 import numpy as np
 from seguidor_mano.filtro_kalman import FiltroKalman
+
 
 class SeguidorMano:
     def __init__(self, dt):
@@ -15,23 +18,32 @@ class SeguidorMano:
         self.filtro_kalman = None
         self.dt = dt
 
+        # Video capture
+        self.video_cv2 = cv2.VideoCapture(0)
+
+        # último valor suavizado (None hasta que haya datos)
+        self.y_suavizado = None
+
+        # control de hilo
+        self._thread = None
+        self._stop_event = threading.Event()
+
     def iniciar_filtro_kalman(self, y_medicion):
-        F = np.array([[1.0, self.dt],
-                      [0.0, 1.0]])
+        F = np.array([[1.0, self.dt], [0.0, 1.0]])
         H = np.array([[1.0, 0.0]])
-        Q = np.array([[1.0, 0.0],
-                      [0.0, 1.0]])
-        R = np.array([[500.0]]) # Ruido ajustable
-        x0 = np.array([[y_medicion],
-                       [0.0]])
+        Q = np.array([[1.0, 0.0], [0.0, 1.0]])
+        R = np.array([[1000.0]])  # Ruido ajustable
+        x0 = np.array([[y_medicion], [0.0]])
         P0 = np.eye(2) * 1000.0
         self.filtro_kalman = FiltroKalman(F, H, Q, R, x0, P0)
 
-    def iniciar(self):
-        while True:
+    def _loop(self):
+        while not self._stop_event.is_set():
             ret, imagen = self.video_cv2.read()
             if not ret:
-                break
+                # si no hay frame, esperar un poco y continuar
+                cv2.waitKey(10)
+                continue
 
             imagen_rgb = cv2.cvtColor(imagen, cv2.COLOR_BGR2RGB)
             resultado = self.mano.process(imagen_rgb)
@@ -39,7 +51,6 @@ class SeguidorMano:
 
             if resultado.multi_hand_landmarks:
                 referencias_mano = resultado.multi_hand_landmarks[0]
-                # Usamos WRIST como referencia de palma
                 palma = referencias_mano.landmark[self.mano_mp.HandLandmark.WRIST]
                 x_px = int(palma.x * ancho)
                 y_px = float(palma.y * alto)
@@ -51,28 +62,48 @@ class SeguidorMano:
                 z = np.array([[y_px]])
                 self.filtro_kalman.actualizar(z)
 
-                y_suavizado = float(self.filtro_kalman.estado_actual[0, 0])
+                # actualizar propiedad pública
+                self.y_suavizado = float(self.filtro_kalman.estado_actual[0, 0])
 
-                # Dibujar: medicion (rojo) y filtrado (verde)
+                # Opcional: dibujar para debugging (se puede desactivar)
                 cv2.circle(imagen, (x_px, int(y_px)), 8, (0, 0, 255), -1)
-                cv2.circle(imagen, (x_px, int(y_suavizado)), 8, (0, 255, 0), -1)
-
-                # Dibujar esqueleto de MediaPipe para referencia
+                cv2.circle(imagen, (x_px, int(self.y_suavizado)), 8, (0, 255, 0), -1)
                 self.graficar_mp.draw_landmarks(imagen, referencias_mano, self.mano_mp.HAND_CONNECTIONS)
-
-                # Mostrar valores en pantalla (opcional, breve)
-                cv2.putText(imagen, f"medicion={int(y_px)} suavizado={int(y_suavizado)}",
+                cv2.putText(imagen, f"medicion={int(y_px)} suavizado={int(self.y_suavizado)}",
                             (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
-            cv2.imshow("'q' para salir", imagen)
+            # mostrar ventana de debug (puedes comentar si no la quieres)
+            cv2.imshow("SeguidorMano - 'q' sale", imagen)
             if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+                self._stop_event.set()
 
         self.detener()
 
+    def iniciar(self, background=True):
+        """Inicia la captura.
+
+        Si background=True, lanza un hilo y regresa inmediatamente.
+        Si background=False, ejecuta el loop en el hilo actual (bloqueante).
+        """
+        self._stop_event.clear()
+        if background:
+            if self._thread is None or not self._thread.is_alive():
+                self._thread = threading.Thread(target=self._loop, daemon=True)
+                self._thread.start()
+        else:
+            self._loop()
+
     def detener(self):
+        # Señalizar stop y liberar recursos
+        self._stop_event.set()
         if self.mano:
-            self.mano.close()
+            try:
+                self.mano.close()
+            except Exception:
+                pass
         if self.video_cv2 and self.video_cv2.isOpened():
-            self.video_cv2.release()
+            try:
+                self.video_cv2.release()
+            except Exception:
+                pass
         cv2.destroyAllWindows()

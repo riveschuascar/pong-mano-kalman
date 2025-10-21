@@ -1,11 +1,9 @@
-import cv2
 import mediapipe as mp
 import numpy as np
-from FiltroKalman import FiltroKalman
+from seguidor_mano.filtro_kalman import FiltroKalman
 
 class SeguidorMano:
     def __init__(self, dt):
-        self.video_cv2 = cv2.VideoCapture(0, cv2.CAP_DSHOW)
         self.mano_mp = mp.solutions.hands
         self.mano = self.mano_mp.Hands(
             static_image_mode=False,

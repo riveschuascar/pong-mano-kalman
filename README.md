@@ -1,5 +1,5 @@
 # Requerimientos
-* Python > 3.13.0
+* Python =< 3.12.0
 * mediapipe
 * pygame
 

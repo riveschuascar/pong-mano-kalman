@@ -47,6 +47,10 @@ class Pelota:
             self.y = float(alto - self.radio)
             self.rebotar_vertical()
             bounced = True
+        if self.x - self.radio <= 0:
+            self.x = float(self.radio)
+            self.rebotar()
+            bounced = True
         # mantener rect en sincronía
         self.rect.center = (int(self.x), int(self.y))
         return bounced

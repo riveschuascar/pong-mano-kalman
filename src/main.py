@@ -4,14 +4,14 @@ from seguidor_mano.seguidor_mano import SeguidorMano
 
 def main():
     pygame.init()
-    screen = pygame.display.set_mode((800, 500))
+    screen = pygame.display.set_mode((650, 480))
     pygame.display.set_caption("Hand Controlled Pong")
 
     reloj = pygame.time.Clock()
     DIFICULTAD = 3
     seguidor = SeguidorMano(2)
     seguidor.iniciar(background=True)
-    juego = Juego(screen.get_width(), screen.get_height(), seguidor, DIFICULTAD)
+    juego = Juego(screen.get_width(), screen.get_height(), seguidor)
 
     juego.ejecutar()
 

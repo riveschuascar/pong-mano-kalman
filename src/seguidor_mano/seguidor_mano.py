@@ -3,7 +3,7 @@ import cv2
 import mediapipe as mp
 import numpy as np
 from seguidor_mano.filtro_kalman import FiltroKalman
-
+from seguidor_mano.filtro_kalman_extendido import FiltroKalmanExtendido
 
 class SeguidorMano:
     def __init__(self, dt):
@@ -29,13 +29,12 @@ class SeguidorMano:
         self._stop_event = threading.Event()
 
     def iniciar_filtro_kalman(self, y_medicion):
-        F = np.array([[1.0, self.dt], [0.0, 1.0]])
-        H = np.array([[1.0, 0.0]])
-        Q = np.array([[1.0, 0.0], [0.0, 1.0]])
-        R = np.array([[1000.0]])  # Ruido ajustable
-        x0 = np.array([[y_medicion], [0.0]])
-        P0 = np.eye(2) * 1000.0
-        self.filtro_kalman = FiltroKalman(F, H, Q, R, x0, P0)
+        # Estado inicial [posicion, velocidad, aceleracion]
+        x0 = np.array([[y_medicion], [0.0], [0.0]])
+        P0 = np.eye(3) * 500.0  # incertidumbre inicial
+        Q = np.diag([1.0, 1.0, 1.0])  # ruido del proceso
+        R = np.array([[1000.0]])      # ruido de medición
+        self.filtro_kalman = FiltroKalmanExtendido(Q, R, x0, P0, self.dt)
 
     def _loop(self):
         while not self._stop_event.is_set():
@@ -62,8 +61,7 @@ class SeguidorMano:
                 z = np.array([[y_px]])
                 self.filtro_kalman.actualizar(z)
 
-                # actualizar propiedad pública
-                self.y_suavizado = float(self.filtro_kalman.estado_actual[0, 0])
+                self.y_suavizado = float(self.filtro_kalman.x[0, 0])
 
                 # Opcional: dibujar para debugging (se puede desactivar)
                 cv2.circle(imagen, (x_px, int(y_px)), 8, (0, 0, 255), -1)
